@@ -26,7 +26,7 @@ import traci  # noqa
 
 def run():
     
-    # os.system('cls')
+    os.system('cls')
     
     graph = Graph()
     LANES = list(traci.lane.getIDList())
@@ -48,7 +48,7 @@ def run():
             allowed = traci.lane.getAllowed(conseq_lane[0])
             if allowed == [] or 'private' in allowed:
                 allowed_conseq.append(conseq_lane[0])
-        print(cost)
+        
         cost = traci.lane.getTraveltime(lane)
 
         for conseq_lane in allowed_conseq:
@@ -62,16 +62,26 @@ def run():
     start_times = Counter({})
     end_times = Counter({})
     distances = Counter({})
-    vehicle_record = {}
+    # logs = {}
+    reroute_p = 0.0
+
+    # for lane in LANES:
+    #     logs[lane] = []
+
     while traci.simulation.getMinExpectedNumber() > 0:
         traci.simulationStep()
         t = traci.simulation.getTime()
         print('Time: ', t)
 
+        # for lane in LANES:
+        #     logs[lane] = logs[lane] + [traci.lane.getLastStepVehicleNumber(lane)]
+
         VEHICLES = traci.vehicle.getIDList()
 
         for vehicle in VEHICLES:
-            if vehicle not in start_times.keys():
+            if vehicle not in start_times.keys() or random.random() < reroute_p:
+                graph.update_weights()
+
                 start_times[vehicle] = t
 
                 origin = traci.vehicle.getLaneID(vehicle)
@@ -79,23 +89,24 @@ def run():
                 destination = EDGE_to_LANE[old_route[-1]]
                 new_route = dijsktra(graph, origin, destination)
                 if new_route == 'Route Not Possible':
-                    # print('\n', vehicle, origin, 'Route not possible', '\n', sep='\n')
                     continue
                 new_route = [traci.lane.getEdgeID(i) for i in new_route]
                 if traci.lane.getEdgeID(origin) in old_route:
                     old_route = old_route[old_route.index(traci.lane.getEdgeID(origin)):]
                     if len(set(old_route) - set(new_route)) > 0:
-                        print('\n', vehicle, origin, set(old_route) - set(new_route), '\n', sep='\n')
+                        origin
+                        # print('\n', vehicle, origin, set(old_route) - set(new_route), '\n', sep='\n')
                     traci.vehicle.setRoute(vehicle,new_route)
             end_times[vehicle] = t
             distances[vehicle] = traci.vehicle.getDistance(vehicle)
 
-
-        # global_weights.update_weights()
-
     travel_times = end_times - start_times
     normed_travel_times = Counter({key:travel_times[key]/distances[key] for key in travel_times.keys()})
 
+    
+    # for log in LOGS:
+    #     plt.plot(logs[log])
+    # plt.show()
     plt.hist(normed_travel_times.values(),bins=20)
     plt.title('Normed Travel Times')
     plt.show()
@@ -148,15 +159,6 @@ def get_options():
     options, args = optParser.parse_args()
     return options
 
-class Graph_Weights:
-    def __init__(self, edges):
-        self.edges = edges
-        self.weights = dict.fromkeys(edges,1)
-
-    def update_weights(self):
-        for edge in self.edges:
-            self.weights[edge] = traci.edge.getTraveltime(edge)
-
 class Graph():
     def __init__(self):
         """
@@ -174,6 +176,10 @@ class Graph():
         self.edges[from_node].append(to_node)
         self.weights[(from_node, to_node)] = weight
 
+    def update_weights(self):
+        for key in self.weights.keys():
+            self.weights[key] = traci.lane.getTraveltime(key[0])
+
 
 # this is the main entry point of this script
 if __name__ == "__main__":
@@ -188,5 +194,5 @@ if __name__ == "__main__":
 
     # this is the normal way of using traci. sumo is started as a
     # subprocess and then the python script connects and runs
-    traci.start([sumoBinary, "-c", "pgh.sumocfg","--tripinfo-output", "pgh.xml", "--no-step-log", "--gui-settings-file", "pgh_style.xml", "--tls.actuated.show-detectors", "TRUE"])
+    traci.start([sumoBinary, "-c", "pgh.sumocfg","--tripinfo-output", "pgh.xml", "--no-step-log", "--gui-settings-file", "pgh_style.xml", "--tls.actuated.show-detectors", "TRUE", "--time-to-teleport", "150"])
     run()
