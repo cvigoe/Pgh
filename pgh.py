@@ -6,6 +6,7 @@ import sys
 import optparse
 import random
 import pandas as pd
+import csv
 
 from collections import Counter
 from collections import defaultdict
@@ -62,57 +63,82 @@ def run():
     start_times = Counter({})
     end_times = Counter({})
     distances = Counter({})
-    # logs = {}
-    reroute_p = 0.0
+    logs = {}
+    prev_IDs = {}
+    reroute_p = 0.00
 
-    # for lane in LANES:
-    #     logs[lane] = []
+    for lane in LANES:
+        logs[lane] = np.zeros((869,4))
+        prev_IDs[lane] = set()
+
+    prev_travel_time = 0
+    prev_vehicle_count = 0
 
     while traci.simulation.getMinExpectedNumber() > 0:
         traci.simulationStep()
-        t = traci.simulation.getTime()
-        print('Time: ', t)
+        t = int(traci.simulation.getTime())
+        # graph.update_weights()
+        # print('Time: ', t)
+        
+        for lane in LANES:
+            travel_time = traci.lane.getTraveltime(lane)
+            vehicle_count = traci.lane.getLastStepVehicleNumber(lane)
+            ids = set(traci.lane.getLastStepVehicleIDs(lane))
+            num_arrivals = len(ids - prev_IDs[lane])
+            prev_IDs[lane] = ids
+            logs[lane][t] = [t, travel_time, vehicle_count, num_arrivals]
 
-        # for lane in LANES:
-        #     logs[lane] = logs[lane] + [traci.lane.getLastStepVehicleNumber(lane)]
+        if travel_time != prev_travel_time or vehicle_count != 0 or vehicle_count != prev_vehicle_count:
+            # print(t,',', travel_time,',', vehicle_count)
+            prev_travel_time = travel_time
+            prev_vehicle_count = vehicle_count
 
-        VEHICLES = traci.vehicle.getIDList()
+        # with open('test.csv', 'w') as f:
+        #     for entry_index in range(logs.shape[0]):
+        #         print("%s\n"%(logs[entry_index][:]))
+        #         f.write("%s\n"%(logs[entry_index]))
 
-        for vehicle in VEHICLES:
-            if vehicle not in start_times.keys() or random.random() < reroute_p:
-                graph.update_weights()
+        # VEHICLES = traci.vehicle.getIDList()
 
-                start_times[vehicle] = t
+        # for vehicle in VEHICLES:
+        #     if vehicle not in start_times.keys() or random.random() < reroute_p:
 
-                origin = traci.vehicle.getLaneID(vehicle)
-                old_route = traci.vehicle.getRoute(vehicle)
-                destination = EDGE_to_LANE[old_route[-1]]
-                new_route = dijsktra(graph, origin, destination)
-                if new_route == 'Route Not Possible':
-                    continue
-                new_route = [traci.lane.getEdgeID(i) for i in new_route]
-                if traci.lane.getEdgeID(origin) in old_route:
-                    old_route = old_route[old_route.index(traci.lane.getEdgeID(origin)):]
-                    if len(set(old_route) - set(new_route)) > 0:
-                        origin
-                        # print('\n', vehicle, origin, set(old_route) - set(new_route), '\n', sep='\n')
-                    traci.vehicle.setRoute(vehicle,new_route)
-            end_times[vehicle] = t
-            distances[vehicle] = traci.vehicle.getDistance(vehicle)
+        #         start_times[vehicle] = t
 
-    travel_times = end_times - start_times
-    normed_travel_times = Counter({key:travel_times[key]/distances[key] for key in travel_times.keys()})
+        #         origin = traci.vehicle.getLaneID(vehicle)
+        #         old_route = traci.vehicle.getRoute(vehicle)
+        #         destination = EDGE_to_LANE[old_route[-1]]
+        #         new_route = dijsktra(graph, origin, destination)
+        #         if new_route == 'Route Not Possible':
+        #             continue
+        #         new_route = [traci.lane.getEdgeID(i) for i in new_route]
+        #         if traci.lane.getEdgeID(origin) in old_route:
+        #             old_route = old_route[old_route.index(traci.lane.getEdgeID(origin)):]
+        #             if len(set(old_route) - set(new_route)) > 0:
+        #                 origin
+        #                 # print('\n', vehicle, origin, set(old_route) - set(new_route), '\n', sep='\n')
+        #             if len(new_route) > 4 and len(old_route) > 4 and t < 900:
+        #                 traci.vehicle.setRoute(vehicle,new_route)
+        #     end_times[vehicle] = t
+        #     distances[vehicle] = traci.vehicle.getDistance(vehicle)
 
-    
-    # for log in LOGS:
+    # travel_times = end_times - start_times
+    # normed_travel_times = Counter({key:travel_times[key]/distances[key] for key in travel_times.keys()})
+
+    # df = pd.DataFrame.from_dict(logs)    
+    # df.to_csv('pgh_logs.csv')
+
+    # for log in logs:
     #     plt.plot(logs[log])
     # plt.show()
-    plt.hist(normed_travel_times.values(),bins=20)
-    plt.title('Normed Travel Times')
-    plt.show()
-    plt.hist(travel_times.values(),bins=20)
-    plt.title('Travel Times')
-    plt.show()
+    # plt.hist(normed_travel_times.values(),bins=20)
+    # plt.title('Normed Travel Times')
+    # plt.show()
+    # plt.hist(travel_times.values(),bins=20)
+    # plt.title('Travel Times')
+    # plt.show()
+    for lane in LANES:
+        np.savetxt('edge_data/data_' + lane + '.csv', logs[lane], delimiter=',')
 
 
 def dijsktra(graph, initial, end):
